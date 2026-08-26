@@ -28,5 +28,15 @@ services:
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
 
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: ohellen_frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - ohellen
+
 volumes:
   postgres_data:
