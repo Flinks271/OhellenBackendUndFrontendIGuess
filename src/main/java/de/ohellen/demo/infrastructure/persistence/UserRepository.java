@@ -1,6 +1,6 @@
-package de.ohellen.demo.repository;
+package de.ohellen.demo.infrastructure.persistence;
 
-import de.ohellen.demo.model.User;
+import de.ohellen.demo.domain.user.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;

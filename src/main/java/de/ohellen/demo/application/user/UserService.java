@@ -1,9 +1,9 @@
-package de.ohellen.demo.service;
+package de.ohellen.demo.application.user;
 
-import de.ohellen.demo.model.Role;
-import de.ohellen.demo.model.User;
-import de.ohellen.demo.repository.RoleRepository;
-import de.ohellen.demo.repository.UserRepository;
+import de.ohellen.demo.domain.user.Role;
+import de.ohellen.demo.domain.user.User;
+import de.ohellen.demo.infrastructure.persistence.RoleRepository;
+import de.ohellen.demo.infrastructure.persistence.UserRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

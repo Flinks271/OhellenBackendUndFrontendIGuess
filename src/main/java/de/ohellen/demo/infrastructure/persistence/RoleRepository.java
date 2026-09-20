@@ -1,6 +1,6 @@
-package de.ohellen.demo.repository;
+package de.ohellen.demo.infrastructure.persistence;
 
-import de.ohellen.demo.model.Role;
+import de.ohellen.demo.domain.user.Role;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;

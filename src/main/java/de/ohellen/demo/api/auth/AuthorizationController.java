@@ -1,10 +1,15 @@
-package de.ohellen.demo.controller;
+package de.ohellen.demo.api.auth;
 
-import de.ohellen.demo.model.Role;
-import de.ohellen.demo.model.User;
-import de.ohellen.demo.repository.RoleRepository;
-import de.ohellen.demo.security.JwtUtil;
-import de.ohellen.demo.service.UserService;
+import de.ohellen.demo.api.auth.dto.LoginRequest;
+import de.ohellen.demo.api.auth.dto.LoginResponse;
+import de.ohellen.demo.api.auth.dto.RefreshRequest;
+import de.ohellen.demo.api.auth.dto.RegisterRequest;
+import de.ohellen.demo.api.auth.dto.RoleAssignRequest;
+import de.ohellen.demo.application.user.UserService;
+import de.ohellen.demo.domain.user.Role;
+import de.ohellen.demo.domain.user.User;
+import de.ohellen.demo.infrastructure.persistence.RoleRepository;
+import de.ohellen.demo.infrastructure.security.jwt.JwtUtil;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;

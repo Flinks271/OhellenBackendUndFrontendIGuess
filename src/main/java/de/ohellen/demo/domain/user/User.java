@@ -1,4 +1,4 @@
-package de.ohellen.demo.model;
+package de.ohellen.demo.domain.user;
 
 import jakarta.persistence.*;
 import org.springframework.security.core.GrantedAuthority;

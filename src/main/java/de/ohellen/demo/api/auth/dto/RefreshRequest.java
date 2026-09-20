@@ -1,4 +1,4 @@
-package de.ohellen.demo.controller;
+package de.ohellen.demo.api.auth.dto;
 
 public class RefreshRequest {
     private String refreshToken;

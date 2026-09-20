@@ -1,6 +1,8 @@
-package de.ohellen.demo.security;
+package de.ohellen.demo.infrastructure.security;
 
-import de.ohellen.demo.repository.UserRepository;
+import de.ohellen.demo.infrastructure.persistence.UserRepository;
+import de.ohellen.demo.infrastructure.security.jwt.JwtAuthenticationFilter;
+import de.ohellen.demo.infrastructure.security.jwt.JwtUtil;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;

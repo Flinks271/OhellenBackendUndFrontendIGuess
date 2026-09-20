@@ -1,4 +1,4 @@
-package de.ohellen.demo.security;
+package de.ohellen.demo.infrastructure.security.jwt;
 
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
