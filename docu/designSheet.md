@@ -7,6 +7,8 @@
 - Ohellen
     - **first:** Only for pc + Play by click
     - **later:** mobile devices + drag and drop
+    - **later:** settings for sorting cards and how they are ordered
+    - **later:** true choosing of card in last round
 - Lobbies
     - Session based games
     - Scores for games played sequentially
