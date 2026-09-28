@@ -29,7 +29,7 @@ import java.util.stream.Collectors;
 
 @RestController
 @CrossOrigin(origins = {"http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:5173"}, allowCredentials = "true")
-@RequestMapping("/auth")
+@RequestMapping({"/auth", "/api/auth"})
 public class AuthorizationController {
 
     private static final long ACCESS_TOKEN_TTL_MS = 15L * 60 * 1000;
@@ -81,8 +81,24 @@ public class AuthorizationController {
             claims.put("roles", roles);
         }
 
-        String accessToken = jwtUtil.generateToken(req.getEmail(), claims, ACCESS_TOKEN_TTL_MS);
+        String subject = authenticatedUser.getUsername();
+        String accessToken = jwtUtil.generateToken(subject, claims, ACCESS_TOKEN_TTL_MS);
         String refreshToken = refreshSessionService.createForUser(authenticatedUser.getUserId());
+
+        response.addHeader(HttpHeaders.SET_COOKIE, createRefreshCookie(refreshToken, 7 * 24 * 60 * 60).toString());
+        return ResponseEntity.ok(new LoginResponse(accessToken, refreshToken));
+    }
+
+    @PostMapping("/guest-login")
+    public ResponseEntity<LoginResponse> guestLogin(@RequestBody Map<String, String> payload, HttpServletResponse response) {
+        String name = payload.getOrDefault("name", "Guest");
+        User guest = userService.findOrCreateGuest(name);
+
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("roles", List.of("ROLE_USER"));
+
+        String accessToken = jwtUtil.generateToken(guest.getUsername(), claims, ACCESS_TOKEN_TTL_MS);
+        String refreshToken = refreshSessionService.createForUser(guest.getUserId());
 
         response.addHeader(HttpHeaders.SET_COOKIE, createRefreshCookie(refreshToken, 7 * 24 * 60 * 60).toString());
         return ResponseEntity.ok(new LoginResponse(accessToken, refreshToken));

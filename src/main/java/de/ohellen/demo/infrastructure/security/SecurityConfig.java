@@ -54,7 +54,18 @@ public class SecurityConfig {
             )
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/auth/csrf", "/auth/login", "/auth/register", "/auth/refresh", "/auth/logout").permitAll()
+                .requestMatchers(
+                        "/auth/csrf", "/auth/login", "/auth/register", "/auth/refresh", "/auth/logout",
+                        "/auth/guest-login",
+                        "/api/auth/csrf", "/api/auth/login", "/api/auth/register", "/api/auth/refresh", "/api/auth/logout",
+                        "/api/auth/guest-login",
+                        "/api/lobbies", "/api/lobbies/**",
+                        "/api/game/**",
+                        "/api/users/**",
+                        "/api/games",
+                        "/api/fame",
+                        "/api/shame"
+                ).permitAll()
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);

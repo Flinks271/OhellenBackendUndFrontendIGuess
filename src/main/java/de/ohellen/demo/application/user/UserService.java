@@ -8,6 +8,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -37,6 +39,25 @@ public class UserService {
     }
 
     @Transactional
+    public User findOrCreateGuest(String name) {
+        String normalizedName = name == null ? "Guest" : name.trim();
+        if (normalizedName.isEmpty()) {
+            normalizedName = "Guest";
+        }
+        final String resolvedName = normalizedName;
+
+        return userRepository.findByEmailIsNullAndPasswordIsNullAndName(resolvedName)
+                .orElseGet(() -> {
+                    User guest = new User();
+                    guest.setName(resolvedName);
+                    guest.setEmail(null);
+                    guest.setPassword(null);
+                    roleRepository.findByRoleName("ROLE_USER").ifPresent(r -> guest.getRoles().add(r));
+                    return userRepository.save(guest);
+                });
+    }
+
+    @Transactional
     public User assignRole(Long userId, String roleName) {
         User user = userRepository.findById(userId).orElseThrow(() -> new IllegalArgumentException("User not found"));
         Role role = roleRepository.findByRoleName(roleName).orElseThrow(() -> new IllegalArgumentException("Role not found"));
@@ -45,4 +66,12 @@ public class UserService {
     }
 
     public Optional<User> findByEmail(String email) { return userRepository.findByEmail(email); }
+
+    public Optional<User> findById(Long userId) { return userRepository.findById(userId); }
+
+    public List<User> findAllUsers() { return userRepository.findAll(); }
+
+    public List<Map<String, Object>> getUserGames(Long userId) {
+        return List.of(Map.of("userId", userId, "games", List.of()));
+    }
 }
