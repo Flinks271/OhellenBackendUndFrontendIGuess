@@ -1,11 +1,16 @@
 package de.ohellen.demo.application.game;
 
 import de.ohellen.demo.application.lobby.LobbyService;
+import de.ohellen.demo.domain.game.GameResult;
 import de.ohellen.demo.domain.game.GameState;
 import de.ohellen.demo.domain.game.Lobby;
 import de.ohellen.demo.domain.user.User;
+import de.ohellen.demo.infrastructure.persistence.GameResultRepository;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -36,11 +41,17 @@ public class GameService {
     );
 
     private final LobbyService lobbyService;
+    private final GameResultRepository gameResultRepository;
+    private final JdbcTemplate jdbcTemplate;
+    private final SimpMessagingTemplate messagingTemplate;
     private final Random random = new Random();
     private final Map<Long, GameState> gamesByLobbyId = new ConcurrentHashMap<>();
 
-    public GameService(LobbyService lobbyService) {
+    public GameService(LobbyService lobbyService, GameResultRepository gameResultRepository, JdbcTemplate jdbcTemplate, SimpMessagingTemplate messagingTemplate) {
         this.lobbyService = lobbyService;
+        this.gameResultRepository = gameResultRepository;
+        this.jdbcTemplate = jdbcTemplate;
+        this.messagingTemplate = messagingTemplate;
     }
 
     public GameState startGame(Long lobbyId) {
@@ -65,11 +76,15 @@ public class GameService {
         state.setTrumpCard(trumpCard);
         state.setRound(1);
         state.setCardsPerRound(13);
+        state.setStartedAt(Instant.now());
         state.setCurrentTrick(new ArrayList<>());
         state.setLeadPlayerId(playerOrder.getFirst());
         state.setCurrentPlayerId(playerOrder.getFirst());
         state.setFinished(false);
         state.clearBids();
+        state.getRoundResults().clear();
+        state.getTotalTricksWon().clear();
+        state.resetRoundTricksWon();
         initializeRound(state, 1);
         gamesByLobbyId.put(lobbyId, state);
         return state;
@@ -102,15 +117,18 @@ public class GameService {
             throw new IllegalArgumentException("Game not found");
         }
 
-        int nextRound = game.getRound() + 1;
-        if (nextRound > 13) {
+        if (game.getRound() >= 13) {
+            game.recordRoundResult();
+            persistCompletedGameResult(game);
             game.setFinished(true);
             game.setCurrentPlayerId(null);
             game.setLeadPlayerId(null);
+            gamesByLobbyId.remove(lobbyId);
             return game;
         }
 
-        initializeRound(game, nextRound);
+        game.recordRoundResult();
+        initializeRound(game, game.getRound() + 1);
         return game;
     }
 
@@ -124,6 +142,7 @@ public class GameService {
         game.setCurrentPlayerId(game.getPlayerOrder().getFirst());
         game.clearBids();
         game.setHands(dealHands(game.getPlayerOrder(), cardsPerRound));
+        game.resetRoundTricksWon();
     }
 
     private Long determineFirstTrickLeader(GameState game) {
@@ -313,6 +332,7 @@ public class GameService {
         }
 
         Long trickWinnerId = determineTrickWinner(game);
+        game.recordTrickWin(trickWinnerId);
         game.setLastTrickWinnerId(trickWinnerId);
         game.setLeadPlayerId(trickWinnerId);
         game.setCurrentPlayerId(trickWinnerId);
@@ -350,6 +370,79 @@ public class GameService {
         }
 
         return winnerId;
+    }
+
+    private GameResult persistCompletedGameResult(GameState game) {
+        Long winnerId = null;
+        int highestTotal = -1;
+        for (Map.Entry<Long, Integer> entry : game.getTotalTricksWon().entrySet()) {
+            if (entry.getValue() > highestTotal) {
+                highestTotal = entry.getValue();
+                winnerId = entry.getKey();
+            }
+        }
+
+        Lobby lobby = lobbyService.getLobby(game.getLobbyId());
+        List<Map<String, Object>> players = new ArrayList<>();
+        for (Long playerId : game.getPlayerOrder()) {
+            User user = lobby != null ? lobby.getPlayers().stream().filter(p -> p.getUserId().equals(playerId)).findFirst().orElse(null) : null;
+            Map<String, Object> playerEntry = new LinkedHashMap<>();
+            playerEntry.put("userId", playerId);
+            playerEntry.put("name", user != null ? user.getName() : "Unknown");
+            playerEntry.put("totalTricksWon", game.getTotalTricksWon().getOrDefault(playerId, 0));
+            players.add(playerEntry);
+        }
+
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("lobbyId", game.getLobbyId());
+        summary.put("winnerUserId", winnerId);
+        summary.put("players", players);
+        summary.put("rounds", game.getRoundResults());
+
+        try {
+            GameResult result = new GameResult();
+            result.setLobbyId(game.getLobbyId());
+            result.setSessionId("lobby-" + game.getLobbyId());
+            result.setStartTime(game.getStartedAt());
+            result.setEndTime(Instant.now());
+            GameResult saved = gameResultRepository.save(result);
+
+            for (Long playerId : game.getPlayerOrder()) {
+                int finalScore = game.getTotalTricksWon().getOrDefault(playerId, 0);
+                jdbcTemplate.update(
+                        "INSERT INTO game_players (game_id, user_id, final_score) VALUES (?, ?, ?)",
+                        saved.getId(), playerId.intValue(), finalScore
+                );
+            }
+
+            for (Map<String, Object> roundResult : game.getRoundResults()) {
+                Integer roundNumber = (Integer) roundResult.get("round");
+                jdbcTemplate.update(
+                        "INSERT INTO rounds (game_id, round_number) VALUES (?, ?)",
+                        saved.getId(), roundNumber
+                );
+
+                Map<?, ?> bids = (Map<?, ?>) roundResult.get("bids");
+                Map<?, ?> tricksWon = (Map<?, ?>) roundResult.get("tricksWon");
+                for (Long playerId : game.getPlayerOrder()) {
+                    Integer playerCall = bids != null && bids.containsKey(playerId) ? ((Number) bids.get(playerId)).intValue() : 0;
+                    Integer pointsEarned = tricksWon != null && tricksWon.containsKey(playerId) ? ((Number) tricksWon.get(playerId)).intValue() : 0;
+                    jdbcTemplate.update(
+                            "INSERT INTO round_player_stats (game_id, round_number, user_id, player_call, points_earned) VALUES (?, ?, ?, ?, ?)",
+                            saved.getId(), roundNumber, playerId.intValue(), playerCall, pointsEarned
+                    );
+                }
+            }
+
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("type", "game.finished");
+            payload.put("result", summary);
+            payload.put("gameId", saved.getId());
+            messagingTemplate.convertAndSend("/topic/game." + game.getLobbyId(), (Object) payload);
+            return saved;
+        } catch (Exception exception) {
+            throw new IllegalStateException("Could not persist completed game result", exception);
+        }
     }
 
     public void removeGame(Long lobbyId) {

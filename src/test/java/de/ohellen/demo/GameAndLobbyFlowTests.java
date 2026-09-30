@@ -5,6 +5,7 @@ import de.ohellen.demo.application.game.GameService;
 import de.ohellen.demo.application.lobby.LobbyService;
 import de.ohellen.demo.application.user.UserService;
 import de.ohellen.demo.domain.user.User;
+import de.ohellen.demo.infrastructure.persistence.GameResultRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -24,6 +25,9 @@ class GameAndLobbyFlowTests {
 
     @Autowired
     private GameService gameService;
+
+    @Autowired
+    private GameResultRepository gameResultRepository;
 
     @Test
     void guestUsersAreReusedByName() {
@@ -153,5 +157,31 @@ class GameAndLobbyFlowTests {
         assertThat(game.getRound()).isEqualTo(2);
         assertThat(game.getCardsPerRound()).isEqualTo(12);
         assertThat(game.getHands().get(owner.getUserId().toString())).hasSize(12);
+    }
+
+    @Test
+    void finishedGamePersistsRoundResultsAndPlayers() {
+        User owner = userService.register("Owner", "owner6@test.com", "Password123!");
+        User playerTwo = userService.register("Second", "second6@test.com", "Password123!");
+        User playerThree = userService.register("Third", "third6@test.com", "Password123!");
+        User playerFour = userService.register("Fourth", "fourth6@test.com", "Password123!");
+
+        LobbyDto lobby = lobbyService.createLobby(owner);
+        lobbyService.joinLobby(playerTwo, lobby.getCode());
+        lobbyService.joinLobby(playerThree, lobby.getCode());
+        lobbyService.joinLobby(playerFour, lobby.getCode());
+        lobbyService.startLobby(owner, lobby.getCode());
+
+        var game = gameService.getGameForLobby(lobby.getLobbyId());
+        for (int i = 0; i < 12; i++) {
+            gameService.finishRound(lobby.getLobbyId());
+            game = gameService.getGameForLobby(lobby.getLobbyId());
+        }
+
+        assertThat(game.getRound()).isEqualTo(13);
+        gameService.finishRound(lobby.getLobbyId());
+
+        assertThat(gameResultRepository.findAll()).isNotEmpty();
+        assertThat(gameResultRepository.findAll().getFirst().getLobbyId()).isEqualTo(lobby.getLobbyId());
     }
 }
