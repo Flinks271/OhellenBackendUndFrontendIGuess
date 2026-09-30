@@ -74,4 +74,84 @@ class GameAndLobbyFlowTests {
         assertThat(updatedGame.getCurrentTrick()).isNotEmpty();
         assertThat(updatedGame.getHands().get(currentPlayerId.toString())).doesNotContain(cardToPlay);
     }
+
+    @Test
+    void aCompletedTrickResetsTheTurnOrder() {
+        User owner = userService.register("Owner", "owner3@test.com", "Password123!");
+        User playerTwo = userService.register("Second", "second3@test.com", "Password123!");
+        User playerThree = userService.register("Third", "third3@test.com", "Password123!");
+        User playerFour = userService.register("Fourth", "fourth3@test.com", "Password123!");
+
+        LobbyDto lobby = lobbyService.createLobby(owner);
+        lobbyService.joinLobby(playerTwo, lobby.getCode());
+        lobbyService.joinLobby(playerThree, lobby.getCode());
+        lobbyService.joinLobby(playerFour, lobby.getCode());
+        lobbyService.startLobby(owner, lobby.getCode());
+
+        var game = gameService.getGameForLobby(lobby.getLobbyId());
+
+        for (Long playerId : game.getPlayerOrder()) {
+            String card = game.getHands().get(playerId.toString()).getFirst();
+            game = gameService.playCard(lobby.getLobbyId(), playerId, card);
+        }
+
+        assertThat(game.getCurrentTrick()).isEmpty();
+        assertThat(game.getPlayerOrder()).contains(game.getCurrentPlayerId());
+    }
+
+    @Test
+    void gameStartDrawsATrumpCardAndSeatOrder() {
+        User owner = userService.register("Owner", "owner4@test.com", "Password123!");
+        User playerTwo = userService.register("Second", "second4@test.com", "Password123!");
+        User playerThree = userService.register("Third", "third4@test.com", "Password123!");
+        User playerFour = userService.register("Fourth", "fourth4@test.com", "Password123!");
+
+        LobbyDto lobby = lobbyService.createLobby(owner);
+        lobbyService.joinLobby(playerTwo, lobby.getCode());
+        lobbyService.joinLobby(playerThree, lobby.getCode());
+        lobbyService.joinLobby(playerFour, lobby.getCode());
+        lobbyService.startLobby(owner, lobby.getCode());
+
+        var game = gameService.getGameForLobby(lobby.getLobbyId());
+
+        assertThat(game.getTrumpCard()).isNotBlank();
+        assertThat(game.getTrump()).isIn("CLUBS", "SPADES", "HEARTS", "DIAMONDS");
+        assertThat(game.getPlayerDraws()).hasSize(4);
+        assertThat(game.getPlayerOrder()).containsExactlyInAnyOrderElementsOf(List.of(owner.getUserId(), playerTwo.getUserId(), playerThree.getUserId(), playerFour.getUserId()));
+    }
+
+    @Test
+    void thirteenRoundGameLoopTracksRoundProgressAndBidLeader() {
+        User owner = userService.register("Owner", "owner5@test.com", "Password123!");
+        User playerTwo = userService.register("Second", "second5@test.com", "Password123!");
+        User playerThree = userService.register("Third", "third5@test.com", "Password123!");
+        User playerFour = userService.register("Fourth", "fourth5@test.com", "Password123!");
+
+        LobbyDto lobby = lobbyService.createLobby(owner);
+        lobbyService.joinLobby(playerTwo, lobby.getCode());
+        lobbyService.joinLobby(playerThree, lobby.getCode());
+        lobbyService.joinLobby(playerFour, lobby.getCode());
+        lobbyService.startLobby(owner, lobby.getCode());
+
+        var game = gameService.getGameForLobby(lobby.getLobbyId());
+        assertThat(game.getRound()).isEqualTo(1);
+        assertThat(game.getCardsPerRound()).isEqualTo(13);
+        assertThat(game.getHands().get(owner.getUserId().toString())).hasSize(13);
+
+        List<Long> playerOrder = game.getPlayerOrder();
+        for (Long playerId : playerOrder) {
+            gameService.submitBid(lobby.getLobbyId(), playerId, 0);
+        }
+
+        game = gameService.getGameForLobby(lobby.getLobbyId());
+        assertThat(game.getLeadPlayerId()).isNotNull();
+        assertThat(game.getCurrentPlayerId()).isEqualTo(game.getLeadPlayerId());
+
+        gameService.finishRound(lobby.getLobbyId());
+        game = gameService.getGameForLobby(lobby.getLobbyId());
+
+        assertThat(game.getRound()).isEqualTo(2);
+        assertThat(game.getCardsPerRound()).isEqualTo(12);
+        assertThat(game.getHands().get(owner.getUserId().toString())).hasSize(12);
+    }
 }

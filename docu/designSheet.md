@@ -52,23 +52,43 @@
     - Game Settings
         - Round Timer
         - **later:** Card Skin + Background Skin (maybe can be set on main lobby screen for each player)
-4. In-Game
-    1. (if needed, starting player is decided)
-    2. Trump gets chosen
-    3. Get cards
-    4. Call your points
-    5. Play round
-        1. Play trick
-            1. Player plays card
-            2. All players get update
-            3. if <3 have played, go back to 1
-        2. if $trick < round$, go back to 1
-    6. if $round != 13$, round++ and go back to 3
-    7. Get cards with method of step 1
-    8. Call your points
-    9. Play trick
-    10. Show game stats
-    11. go back to lobby
+4. Pregame setup
+    1. A trump card is drawn from the 52-card deck.
+    2. The trump suit is extracted from that card.
+    3. Each player draws one card from the shuffled deck.
+    4. The cards are ordered by rank relative to the trump suit.
+    5. The resulting sorted draw order decides the player seat order at the table.
+5. Start of the game
+    1. There are exactly 13 rounds.
+    2. Round 1 deals 13 cards to each player.
+    3. Every following round reduces the hand size by 1 card.
+    4. The last round deals exactly 1 card to each player.
+6. Bidding / prediction phase
+    1. For each round, every player predicts how many tricks they expect to win.
+    2. Prediction range is from 0 to the current cards-per-round value.
+    3. The player with the highest prediction starts the first trick of the round.
+    4. If two or more players tie for the highest prediction, the player who predicted first in the seat order starts.
+7. Trick phase
+    1. The current leader starts the trick.
+    2. Remaining players follow in seat order.
+    3. The highest valid card wins the trick according to suit precedence and trump rules.
+    4. After a trick is resolved, the winner of that trick starts the next trick.
+    5. The round continues until all tricks of the current hand size are played.
+8. Round transition
+    1. When the round ends, the server advances to the next round.
+    2. The cards-per-round value decreases by 1.
+    3. The new round starts with a fresh bidding phase.
+9. Game end
+    1. After round 13 is complete, the game ends.
+    2. Final scores can then be calculated and shown to the lobby.
+    3. The lobby can return to its lobby state after the result screen.
+
+Implementation status:
+- Pregame draw and seat-order generation are implemented.
+- Trump selection and deck comparison logic are implemented.
+- Thirteen-round progression and decreasing card count are implemented.
+- Bid-based opening leader selection and trick-winner-based lead progression are implemented in the service layer.
+- A dedicated broadcast action for bidding is not yet exposed in the WebSocket controller, but the backend state and round mechanics are in place.
 
 
 

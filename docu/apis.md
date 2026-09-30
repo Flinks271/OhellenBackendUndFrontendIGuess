@@ -49,6 +49,8 @@ Example error shape:
 - `POST /api/game/drewlastcard`
 - WebSocket endpoint: `/ws`
 - Topics: `/topic/lobby.<code>`, `/topic/game.<lobbyId>`
+- Current WS actions supported by the backend: `/app/game.start`, `/app/game.play`
+- Service-level round/bid flow currently implemented: `submitBid`, `finishRound`, `determineFirstTrickLeader`
 
 ## User / history
 - `GET /api/users`
@@ -367,7 +369,7 @@ Recommended flow:
 2. Receive lobby payload with the game topic information
 3. Connect to the websocket endpoint `ws://localhost:8080/ws`
 4. Subscribe to `/topic/game.<lobbyId>`
-5. Send game actions to `/app/game.*`
+5. Send game actions to `/app/game.start` and `/app/game.play`
 
 Current websocket config:
 - Endpoint: `/ws`
@@ -382,21 +384,32 @@ stompClient.subscribe('/topic/game.1', (message) => {
 });
 ```
 
-Example message payloads:
+Example outbound message payloads:
 ```json
 {
   "type": "game.started",
   "game": {
     "lobbyId": 1,
     "playerOrder": [5, 7, 9, 11],
-    "currentPlayerId": 5,
-    "trump": "HEARTS",
-    "round": 1,
-    "hands": {
-      "5": ["HEARTS-7", "HEARTS-8"],
-      "7": ["CLUBS-10", "SPADES-9"]
+    "playerDraws": {
+      "5": "HEARTS-K",
+      "7": "SPADES-9",
+      "9": "CLUBS-4",
+      "11": "DIAMONDS-A"
     },
-    "currentTrick": []
+    "currentPlayerId": 5,
+    "leadPlayerId": 5,
+    "trump": "HEARTS",
+    "trumpCard": "HEARTS-K",
+    "round": 1,
+    "cardsPerRound": 13,
+    "hands": {
+      "5": ["HEARTS-7", "HEARTS-8", "HEARTS-9"],
+      "7": ["CLUBS-10", "SPADES-9", "DIAMONDS-7"]
+    },
+    "currentTrick": [],
+    "bids": {},
+    "lastTrickWinnerId": null
   }
 }
 ```
@@ -408,16 +421,185 @@ Example message payloads:
     "lobbyId": 1,
     "playerOrder": [5, 7, 9, 11],
     "currentPlayerId": 7,
+    "leadPlayerId": 5,
     "trump": "HEARTS",
+    "trumpCard": "HEARTS-K",
     "round": 1,
+    "cardsPerRound": 13,
     "hands": {
       "5": ["HEARTS-7"],
       "7": ["CLUBS-10"]
     },
-    "currentTrick": ["5:HEARTS-7", "7:CLUBS-10"]
+    "currentTrick": ["5:HEARTS-7", "7:CLUBS-10"],
+    "bids": {
+      "5": 3,
+      "7": 2,
+      "9": 5,
+      "11": 1
+    },
+    "lastTrickWinnerId": 5
   }
 }
 ```
+
+Notes:
+- The controller currently emits only `game.started` and `game.updated` for lobby game broadcasts.
+- `playerDraws` contains the pre-game draw values used to determine seat order and trump.
+- `round` and `cardsPerRound` represent the 13-round timeline.
+- `leadPlayerId` is used to determine who starts the first trick of a round.
+- `lastTrickWinnerId` is set after a completed trick so the next one begins with the winner.
+- Bids are stored on the server in `game.bids` and are used to resolve the leader for the first trick of the round.
+
+### Meaning of the most important fields
+
+The server serializes the game state as plain JSON. A few fields use a compact representation that is important to understand on the client side.
+
+#### `currentTrick`
+Example:
+```json
+"currentTrick": ["5:HEARTS-7", "7:CLUBS-10"]
+```
+
+This is interpreted as:
+- `5` = the player ID who played the card
+- `HEARTS-7` = the card that was played
+- the combined string `"5:HEARTS-7"` is encoded as `playerId:card`
+
+So the item:
+```json
+"5:HEARTS-7"
+```
+means:
+- player `5` played the `HEARTS-7`
+- the client should parse the part before the first `:` as the player ID
+- the part after the first `:` is the card value
+
+This pattern is used throughout the live trick queue: each entry represents one played card in the current trick.
+
+#### `currentPlayerId`
+This is the player whose turn it is now.
+
+Example:
+```json
+"currentPlayerId": 7
+```
+means:
+- player `7` must play the next card
+- the client should allow that player to interact with the table and block other players
+
+#### `leadPlayerId`
+This is the player who started the current trick or the first trick of the round.
+
+Example:
+```json
+"leadPlayerId": 5
+```
+means:
+- player `5` started the trick
+- any follow-card validation uses this to determine the lead suit
+
+#### `lastTrickWinnerId`
+This is the player who won the previous trick.
+
+Example:
+```json
+"lastTrickWinnerId": 5
+```
+means:
+- the next trick should begin with player `5`
+- this matches the implemented rule: the winner of a trick begins the next trick
+
+#### `hands`
+This is keyed by player ID and contains the cards still in each player's hand.
+
+Example:
+```json
+"hands": {
+  "5": ["HEARTS-7", "HEARTS-8"],
+  "7": ["CLUBS-10", "SPADES-9"]
+}
+```
+means:
+- player `5` has `HEARTS-7` and `HEARTS-8`
+- player `7` has `CLUBS-10` and `SPADES-9`
+
+The frontend should only show the current user's own hand and keep other players' hands hidden.
+
+#### `playerOrder`
+This defines the table sequence for turns.
+
+Example:
+```json
+"playerOrder": [5, 7, 9, 11]
+```
+means:
+- the game order is `5 -> 7 -> 9 -> 11 -> 5 -> ...`
+
+This is used for all turn progression and trick-following logic.
+
+### WebSocket message contracts currently exposed by the server
+
+#### `/app/game.start`
+Request body:
+```json
+{
+  "lobbyId": 1
+}
+```
+
+Server response topic: `/topic/game.1`
+```json
+{
+  "type": "game.started",
+  "game": {
+    "lobbyId": 1,
+    "playerOrder": [5, 7, 9, 11],
+    "trump": "HEARTS",
+    "trumpCard": "HEARTS-K",
+    "round": 1,
+    "cardsPerRound": 13,
+    "currentPlayerId": 5,
+    "leadPlayerId": 5,
+    "currentTrick": [],
+    "hands": {
+      "5": ["HEARTS-7", "HEARTS-8", "HEARTS-9"],
+      "7": ["CLUBS-10", "SPADES-9", "DIAMONDS-7"]
+    }
+  }
+}
+```
+
+#### `/app/game.play`
+Request body:
+```json
+{
+  "lobbyId": 1,
+  "userId": 5,
+  "card": "HEARTS-7"
+}
+```
+
+Server response topic: `/topic/game.1`
+```json
+{
+  "type": "game.updated",
+  "game": {
+    "lobbyId": 1,
+    "currentPlayerId": 7,
+    "currentTrick": ["5:HEARTS-7"],
+    "hands": {
+      "5": []
+    },
+    "round": 1,
+    "cardsPerRound": 13,
+    "trump": "HEARTS"
+  }
+}
+```
+
+Notes:
+- A dedicated WebSocket action for bidding is not yet exposed in `GameWebSocketController`; the bid logic exists in the service layer and is ready to be surfaced to the client when the UI is wired up.
+- The HTTP REST endpoints are still the easiest way to trigger bid and round advancement logic while the UI layer catches up.
 
 ---
 
