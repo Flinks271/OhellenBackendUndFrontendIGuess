@@ -38,7 +38,7 @@ public class GameWebSocketController {
         Map<String, Object> payload = new HashMap<>();
         payload.put("type", "lobby.updated");
         payload.put("lobby", lobbyService.getLobbyByCode(code));
-        messagingTemplate.convertAndSend((String) ("/topic/lobby." + code), payload);
+        messagingTemplate.convertAndSend((String) ("/topic/lobby." + code), (Object) payload);
     }
 
     @MessageMapping("/game.start")
@@ -48,7 +48,7 @@ public class GameWebSocketController {
         Map<String, Object> payload = new HashMap<>();
         payload.put("type", "game.started");
         payload.put("game", state);
-        messagingTemplate.convertAndSend((String) ("/topic/game." + lobbyId), payload);
+        messagingTemplate.convertAndSend((String) ("/topic/game." + lobbyId), (Object) payload);
     }
 
     @MessageMapping("/game.play")
@@ -61,6 +61,6 @@ public class GameWebSocketController {
         Map<String, Object> payload = new HashMap<>();
         payload.put("type", "game.updated");
         payload.put("game", state);
-        messagingTemplate.convertAndSend((String) ("/topic/game." + lobbyId), payload);
+        messagingTemplate.convertAndSend((String) ("/topic/game." + lobbyId), (Object) payload);
     }
 }
